@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
 import Vibrant from 'node-vibrant'; // Use Vibrant for better color palette extraction
+import { Server as SocketServer } from 'socket.io';
 
 // Set up multer storage
 const storage = multer.diskStorage({
@@ -12,6 +13,15 @@ const storage = multer.diskStorage({
 
 // Initialize multer
 const upload = multer({ storage });
+
+// Initialize the socket.io server
+let io;
+if (!global.io) {
+  io = new SocketServer();
+  global.io = io;
+} else {
+  io = global.io;
+}
 
 // Define the API route
 export default function handler(req, res) {
@@ -24,7 +34,7 @@ export default function handler(req, res) {
 
       try {
         const filePath = path.resolve('./uploads', req.file.filename); // Path to the uploaded image
-        
+
         // Resize the image to a manageable size for color extraction
         const resizedImageBuffer = await sharp(filePath)
           .resize(1000, 1000) // Resize to reduce processing time; you can adjust the size
@@ -32,9 +42,12 @@ export default function handler(req, res) {
 
         // Use Vibrant to extract the dominant colors
         const palette = await Vibrant.from(resizedImageBuffer).getPalette();
-        
+
         // Convert the palette colors to hex
         const colors = Object.values(palette).map(swatch => swatch.getHex()).filter(Boolean); // Filter out null values
+
+        // Emit the colors to connected clients via socket.io
+        io.emit('colorsExtracted', { colors });
 
         // Delete the uploaded image after processing
         fs.unlinkSync(filePath);
